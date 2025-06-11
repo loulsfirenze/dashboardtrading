@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trading Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <style>
+    body {
+      padding: 20px;
+    }
+    table th {
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="mb-4">Trading Dashboard</h1>
+    <form id="tradeForm" class="row g-3">
+      <div class="col-md-2">
+        <label class="form-label">Date</label>
+        <input type="date" class="form-control" id="tradeDate" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Asset</label>
+        <input type="text" class="form-control" id="asset" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Type</label>
+        <select class="form-select" id="type" required>
+          <option value="Buy">Buy</option>
+          <option value="Sell">Sell</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Entry Price</label>
+        <input type="number" step="any" class="form-control" id="entry" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Exit Price</label>
+        <input type="number" step="any" class="form-control" id="exit">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Quantity</label>
+        <input type="number" step="any" class="form-control" id="quantity" required>
+      </div>
+      <div class="col-12">
+        <label class="form-label">Reason</label>
+        <textarea class="form-control" id="reason" rows="2"></textarea>
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">Add Trade</button>
+      </div>
+    </form>
+
+    <hr>
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h2>Trades</h2>
+      <button id="exportCSV" class="btn btn-secondary">Export CSV</button>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-striped" id="tradesTable">
+        <thead>
+          <tr>
+            <th data-key="date">Date</th>
+            <th data-key="asset">Asset</th>
+            <th data-key="type">Type</th>
+            <th data-key="entry">Entry</th>
+            <th data-key="exit">Exit</th>
+            <th data-key="quantity">Qty</th>
+            <th data-key="profit">Profit</th>
+            <th data-key="reason">Reason</th>
+          </tr>
+        </thead>
+        <tbody id="tradesBody"></tbody>
+      </table>
+    </div>
+
+    <hr>
+
+    <h2>Monthly Summary</h2>
+    <div class="table-responsive">
+      <table class="table table-bordered" id="summaryTable">
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th>Trades</th>
+            <th>Total P/L</th>
+            <th>Gain/Loss Ratio</th>
+            <th>Profit Factor</th>
+          </tr>
+        </thead>
+        <tbody id="summaryBody"></tbody>
+      </table>
+    </div>
+
+    <canvas id="capitalChart" height="80"></canvas>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const tradesKey = 'tradesData';
+    let trades = JSON.parse(localStorage.getItem(tradesKey) || '[]');
+    let sortConfig = { key: 'date', asc: true };
+
+    const form = document.getElementById('tradeForm');
+    const tradesBody = document.getElementById('tradesBody');
+    const summaryBody = document.getElementById('summaryBody');
+    const exportBtn = document.getElementById('exportCSV');
+
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const trade = {
+        date: document.getElementById('tradeDate').value,
+        asset: document.getElementById('asset').value,
+        type: document.getElementById('type').value,
+        entry: parseFloat(document.getElementById('entry').value),
+        exit: document.getElementById('exit').value ? parseFloat(document.getElementById('exit').value) : null,
+        quantity: parseFloat(document.getElementById('quantity').value),
+        reason: document.getElementById('reason').value
+      };
+      trades.push(trade);
+      localStorage.setItem(tradesKey, JSON.stringify(trades));
+      form.reset();
+      render();
+    });
+
+    exportBtn.addEventListener('click', () => {
+      const rows = [
+        ['Date','Asset','Type','Entry','Exit','Quantity','Reason']
+      ];
+      trades.forEach(t => {
+        rows.push([t.date, t.asset, t.type, t.entry, t.exit ?? '', t.quantity, '"'+(t.reason||'')+'"']);
+      });
+      const csvContent = rows.map(r => r.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'trades.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    document.querySelectorAll('#tradesTable th').forEach(th => {
+      th.addEventListener('click', () => {
+        const key = th.getAttribute('data-key');
+        if (sortConfig.key === key) sortConfig.asc = !sortConfig.asc; else sortConfig = { key, asc: true };
+        renderTrades();
+      });
+    });
+
+    function computeProfit(trade) {
+      if (trade.exit === null) return 0;
+      const diff = trade.type === 'Buy' ? trade.exit - trade.entry : trade.entry - trade.exit;
+      return diff * trade.quantity;
+    }
+
+    function renderTrades() {
+      trades.sort((a,b) => {
+        let valA = a[sortConfig.key];
+        let valB = b[sortConfig.key];
+        if (sortConfig.key === 'profit') { valA = computeProfit(a); valB = computeProfit(b); }
+        if (valA < valB) return sortConfig.asc ? -1 : 1;
+        if (valA > valB) return sortConfig.asc ? 1 : -1;
+        return 0;
+      });
+      tradesBody.innerHTML = '';
+      trades.forEach(t => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${t.date}</td>
+          <td>${t.asset}</td>
+          <td>${t.type}</td>
+          <td>${t.entry}</td>
+          <td>${t.exit ?? ''}</td>
+          <td>${t.quantity}</td>
+          <td>${computeProfit(t).toFixed(2)}</td>
+          <td>${t.reason}</td>
+        `;
+        tradesBody.appendChild(row);
+      });
+    }
+
+    function renderSummary() {
+      const monthly = {};
+      trades.forEach(t => {
+        if (t.exit === null) return;
+        const month = t.date.slice(0,7);
+        if (!monthly[month]) {
+          monthly[month] = { trades: 0, profit: 0, gains: 0, losses: 0, winCount: 0, lossCount: 0 };
+        }
+        const p = computeProfit(t);
+        monthly[month].trades++;
+        monthly[month].profit += p;
+        if (p >= 0) {
+          monthly[month].gains += p;
+          monthly[month].winCount++;
+        } else {
+          monthly[month].losses += Math.abs(p);
+          monthly[month].lossCount++;
+        }
+      });
+      const months = Object.keys(monthly).sort();
+      summaryBody.innerHTML = '';
+      const capital = [];
+      let running = 0;
+      months.forEach(m => {
+        const data = monthly[m];
+        running += data.profit;
+        capital.push({ month: m, value: running });
+        const ratio = data.lossCount ? (data.winCount / data.lossCount).toFixed(2) : 'Inf';
+        const profitFactor = data.losses ? (data.gains / data.losses).toFixed(2) : 'Inf';
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${m}</td>
+          <td>${data.trades}</td>
+          <td>${data.profit.toFixed(2)}</td>
+          <td>${ratio}</td>
+          <td>${profitFactor}</td>
+        `;
+        summaryBody.appendChild(row);
+      });
+      renderChart(capital);
+    }
+
+    let chart;
+    function renderChart(data) {
+      const ctx = document.getElementById('capitalChart').getContext('2d');
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.map(d => d.month),
+          datasets: [{
+            label: 'Capital',
+            data: data.map(d => d.value),
+            fill: false,
+            borderColor: 'rgb(75, 192, 192)',
+            tension: 0.1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false
+        }
+      });
+    }
+
+    function render() {
+      renderTrades();
+      renderSummary();
+    }
+
+    render();
+  </script>
+</body>
+</html>
