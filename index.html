@@ -6,12 +6,10 @@
   <title>Trading Dashboard</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <style>
-    body {
-      padding: 20px;
-    }
-    table th {
-      cursor: pointer;
-    }
+    body { padding:20px; }
+    table th { cursor:pointer; }
+    .trade-win { background-color:#d4edda; }
+    .trade-loss{ background-color:#f8d7da; }
   </style>
 </head>
 <body>
@@ -29,25 +27,25 @@
       <div class="col-md-2">
         <label class="form-label">Type</label>
         <select class="form-select" id="type" required>
-          <option value="Buy">Buy</option>
-          <option value="Sell">Sell</option>
+          <option value="Buy">Achat</option>
+          <option value="Sell">Vente</option>
         </select>
       </div>
       <div class="col-md-2">
-        <label class="form-label">Entry Price</label>
+        <label class="form-label">Entry</label>
         <input type="number" step="any" class="form-control" id="entry" required>
       </div>
       <div class="col-md-2">
-        <label class="form-label">Exit Price</label>
+        <label class="form-label">Exit</label>
         <input type="number" step="any" class="form-control" id="exit">
       </div>
       <div class="col-md-2">
-        <label class="form-label">Quantity</label>
+        <label class="form-label">Qty</label>
         <input type="number" step="any" class="form-control" id="quantity" required>
       </div>
       <div class="col-12">
         <label class="form-label">Reason</label>
-        <textarea class="form-control" id="reason" rows="2"></textarea>
+        <textarea id="reason" class="form-control" rows="2"></textarea>
       </div>
       <div class="col-12">
         <button type="submit" class="btn btn-primary">Add Trade</button>
@@ -56,9 +54,12 @@
 
     <hr>
 
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <h2>Trades</h2>
-      <button id="exportCSV" class="btn btn-secondary">Export CSV</button>
+    <div class="d-flex flex-wrap align-items-center mb-2">
+      <h2 class="me-auto">Trades</h2>
+      <input type="file" id="importFile" class="d-none" accept=".xlsx">
+      <button id="exportExcel" class="btn btn-secondary me-2">Export Excel</button>
+      <button id="importExcel" class="btn btn-secondary me-2">Import Excel</button>
+      <button id="resetData" class="btn btn-danger">Reset</button>
     </div>
     <div class="table-responsive">
       <table class="table table-striped" id="tradesTable">
@@ -70,8 +71,8 @@
             <th data-key="entry">Entry</th>
             <th data-key="exit">Exit</th>
             <th data-key="quantity">Qty</th>
-            <th data-key="profit">Profit</th>
-            <th data-key="reason">Reason</th>
+            <th data-key="profit">Gain</th>
+            <th>Reason</th>
           </tr>
         </thead>
         <tbody id="tradesBody"></tbody>
@@ -88,7 +89,6 @@
             <th>Month</th>
             <th>Trades</th>
             <th>Total P/L</th>
-            <th>Gain/Loss Ratio</th>
             <th>Profit Factor</th>
           </tr>
         </thead>
@@ -101,6 +101,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
     const tradesKey = 'tradesData';
     let trades = JSON.parse(localStorage.getItem(tradesKey) || '[]');
@@ -109,7 +110,10 @@
     const form = document.getElementById('tradeForm');
     const tradesBody = document.getElementById('tradesBody');
     const summaryBody = document.getElementById('summaryBody');
-    const exportBtn = document.getElementById('exportCSV');
+    const exportExcelBtn = document.getElementById('exportExcel');
+    const importExcelBtn = document.getElementById('importExcel');
+    const resetBtn = document.getElementById('resetData');
+    const importFile = document.getElementById('importFile');
 
     form.addEventListener('submit', e => {
       e.preventDefault();
@@ -128,21 +132,53 @@
       render();
     });
 
-    exportBtn.addEventListener('click', () => {
-      const rows = [
-        ['Date','Asset','Type','Entry','Exit','Quantity','Reason']
-      ];
-      trades.forEach(t => {
-        rows.push([t.date, t.asset, t.type, t.entry, t.exit ?? '', t.quantity, '"'+(t.reason||'')+'"']);
-      });
-      const csvContent = rows.map(r => r.join(',')).join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'trades.csv';
-      a.click();
-      URL.revokeObjectURL(url);
+    exportExcelBtn.addEventListener('click', () => {
+      const data = trades.map(t => ({
+        Date: t.date,
+        Asset: t.asset,
+        Type: t.type,
+        Entry: t.entry,
+        Exit: t.exit ?? '',
+        Quantity: t.quantity,
+        Reason: t.reason
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Trades');
+      XLSX.writeFile(wb, 'trades.xlsx');
+    });
+
+    importExcelBtn.addEventListener('click', () => importFile.click());
+    importFile.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = evt => {
+        const wb = XLSX.read(new Uint8Array(evt.target.result), {type:'array'});
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet);
+        trades = json.map(r => ({
+          date: r.Date,
+          asset: r.Asset,
+          type: r.Type,
+          entry: parseFloat(r.Entry),
+          exit: r.Exit === '' || r.Exit == null ? null : parseFloat(r.Exit),
+          quantity: parseFloat(r.Quantity),
+          reason: r.Reason || ''
+        }));
+        localStorage.setItem(tradesKey, JSON.stringify(trades));
+        render();
+      };
+      reader.readAsArrayBuffer(file);
+      importFile.value = '';
+    });
+
+    resetBtn.addEventListener('click', () => {
+      if (confirm('Reset all data?')) {
+        trades = [];
+        localStorage.removeItem(tradesKey);
+        render();
+      }
     });
 
     document.querySelectorAll('#tradesTable th').forEach(th => {
@@ -153,10 +189,10 @@
       });
     });
 
-    function computeProfit(trade) {
-      if (trade.exit === null) return 0;
-      const diff = trade.type === 'Buy' ? trade.exit - trade.entry : trade.entry - trade.exit;
-      return diff * trade.quantity;
+    function computeProfit(t) {
+      if (t.exit == null) return 0;
+      const diff = t.type === 'Buy' ? t.exit - t.entry : t.entry - t.exit;
+      return diff * t.quantity;
     }
 
     function renderTrades() {
@@ -171,6 +207,8 @@
       tradesBody.innerHTML = '';
       trades.forEach(t => {
         const row = document.createElement('tr');
+        const p = computeProfit(t);
+        row.className = p >= 0 ? 'trade-win' : 'trade-loss';
         row.innerHTML = `
           <td>${t.date}</td>
           <td>${t.asset}</td>
@@ -178,7 +216,7 @@
           <td>${t.entry}</td>
           <td>${t.exit ?? ''}</td>
           <td>${t.quantity}</td>
-          <td>${computeProfit(t).toFixed(2)}</td>
+          <td>${p.toFixed(2)} ${p >= 0 ? '✅' : '❌'}</td>
           <td>${t.reason}</td>
         `;
         tradesBody.appendChild(row);
@@ -188,39 +226,29 @@
     function renderSummary() {
       const monthly = {};
       trades.forEach(t => {
-        if (t.exit === null) return;
+        if (t.exit == null) return;
         const month = t.date.slice(0,7);
-        if (!monthly[month]) {
-          monthly[month] = { trades: 0, profit: 0, gains: 0, losses: 0, winCount: 0, lossCount: 0 };
-        }
+        if (!monthly[month]) monthly[month] = {trades:0, profit:0, gains:0, losses:0};
         const p = computeProfit(t);
         monthly[month].trades++;
         monthly[month].profit += p;
-        if (p >= 0) {
-          monthly[month].gains += p;
-          monthly[month].winCount++;
-        } else {
-          monthly[month].losses += Math.abs(p);
-          monthly[month].lossCount++;
-        }
+        if (p >= 0) monthly[month].gains += p; else monthly[month].losses += Math.abs(p);
       });
       const months = Object.keys(monthly).sort();
       summaryBody.innerHTML = '';
       const capital = [];
-      let running = 0;
+      let running = 10000;
       months.forEach(m => {
-        const data = monthly[m];
-        running += data.profit;
-        capital.push({ month: m, value: running });
-        const ratio = data.lossCount ? (data.winCount / data.lossCount).toFixed(2) : 'Inf';
-        const profitFactor = data.losses ? (data.gains / data.losses).toFixed(2) : 'Inf';
+        const d = monthly[m];
+        running += d.profit;
+        capital.push({month:m, value:running});
+        const pf = d.losses ? (d.gains/d.losses).toFixed(2) : 'Inf';
         const row = document.createElement('tr');
         row.innerHTML = `
           <td>${m}</td>
-          <td>${data.trades}</td>
-          <td>${data.profit.toFixed(2)}</td>
-          <td>${ratio}</td>
-          <td>${profitFactor}</td>
+          <td>${d.trades}</td>
+          <td>${d.profit.toFixed(2)}</td>
+          <td>${pf}</td>
         `;
         summaryBody.appendChild(row);
       });
@@ -239,18 +267,15 @@
             label: 'Capital',
             data: data.map(d => d.value),
             fill: false,
-            borderColor: 'rgb(75, 192, 192)',
+            borderColor: 'rgb(75,192,192)',
             tension: 0.1
           }]
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false
-        }
+        options: { responsive: true, maintainAspectRatio:false }
       });
     }
 
-    function render() {
+    function render(){
       renderTrades();
       renderSummary();
     }
