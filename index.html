@@ -12,7 +12,14 @@
     .trade-loss{ background-color:#f8d7da; }
   </style>
 </head>
-<body>
+<footer style="text-align:center; margin-top: 30px; font-size: 0.9em; color: gray;">
+  Version 1.2 – Mis à jour le <span id="buildDate"></span>
+</footer>
+  <script>
+  // Mettre à jour dynamiquement la date de build
+  document.getElementById('buildDate').innerText = new Date().toLocaleDateString('fr-FR');
+</script>
+  <body>
   <div class="container">
     <h1 class="mb-4">Trading Dashboard</h1>
     <form id="tradeForm" class="row g-3">
