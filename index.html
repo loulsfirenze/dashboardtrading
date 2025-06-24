@@ -1,286 +1,384 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trading Dashboard</title>
+  <title>Dashboard Trading</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <style>
     body { padding:20px; }
     table th { cursor:pointer; }
-    .trade-win { background-color:#d4edda; }
-    .trade-loss{ background-color:#f8d7da; }
+    .trade-win{ background:#d4edda; }
+    .trade-loss{ background:#f8d7da; }
+    #chartWrapper{position:sticky;top:0;background:#fff;z-index:1000;}
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1 class="mb-4">Trading Dashboard</h1>
-    <form id="tradeForm" class="row g-3">
-      <div class="col-md-2">
-        <label class="form-label">Date</label>
-        <input type="date" class="form-control" id="tradeDate" required>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label">Asset</label>
-        <input type="text" class="form-control" id="asset" required>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label">Type</label>
-        <select class="form-select" id="type" required>
-          <option value="Buy">Achat</option>
-          <option value="Sell">Vente</option>
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label">Entry</label>
-        <input type="number" step="any" class="form-control" id="entry" required>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label">Exit</label>
-        <input type="number" step="any" class="form-control" id="exit">
-      </div>
-      <div class="col-md-2">
-        <label class="form-label">Qty</label>
-        <input type="number" step="any" class="form-control" id="quantity" required>
-      </div>
-      <div class="col-12">
-        <label class="form-label">Reason</label>
-        <textarea id="reason" class="form-control" rows="2"></textarea>
-      </div>
-      <div class="col-12">
-        <button type="submit" class="btn btn-primary">Add Trade</button>
-      </div>
-    </form>
+<div class="container">
+  <h1 class="mb-4">Dashboard Trading</h1>
 
-    <hr>
-
-    <div class="d-flex flex-wrap align-items-center mb-2">
-      <h2 class="me-auto">Trades</h2>
-      <input type="file" id="importFile" class="d-none" accept=".xlsx">
-      <button id="exportExcel" class="btn btn-secondary me-2">Export Excel</button>
-      <button id="importExcel" class="btn btn-secondary me-2">Import Excel</button>
-      <button id="resetData" class="btn btn-danger">Reset</button>
-    </div>
-    <div class="table-responsive">
-      <table class="table table-striped" id="tradesTable">
-        <thead>
-          <tr>
-            <th data-key="date">Date</th>
-            <th data-key="asset">Asset</th>
-            <th data-key="type">Type</th>
-            <th data-key="entry">Entry</th>
-            <th data-key="exit">Exit</th>
-            <th data-key="quantity">Qty</th>
-            <th data-key="profit">Gain</th>
-            <th>Reason</th>
-          </tr>
-        </thead>
-        <tbody id="tradesBody"></tbody>
-      </table>
-    </div>
-
-    <hr>
-
-    <h2>Monthly Summary</h2>
-    <div class="table-responsive">
-      <table class="table table-bordered" id="summaryTable">
-        <thead>
-          <tr>
-            <th>Month</th>
-            <th>Trades</th>
-            <th>Total P/L</th>
-            <th>Profit Factor</th>
-          </tr>
-        </thead>
-        <tbody id="summaryBody"></tbody>
-      </table>
-    </div>
-
-    <canvas id="capitalChart" height="80"></canvas>
+  <!-- Bloc d'analyse automatique -->
+  <div id="analysisBlock" class="mb-4">
+    <h2>Analyse automatique</h2>
+    <ul>
+      <li id="bestStrategy"></li>
+      <li id="bestAsset"></li>
+      <li id="mostType"></li>
+      <li id="warning" class="text-danger"></li>
+    </ul>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script>
-    const tradesKey = 'tradesData';
-    let trades = JSON.parse(localStorage.getItem(tradesKey) || '[]');
-    let sortConfig = { key: 'date', asc: true };
+  <!-- Filtres interactifs -->
+  <div id="filters" class="row g-2 mb-4">
+    <div class="col-md-3">
+      <label class="form-label">Actif</label>
+      <select id="filterAsset" class="form-select">
+        <option value="">Tous</option>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">De</label>
+      <input type="date" id="filterStart" class="form-control">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">À</label>
+      <input type="date" id="filterEnd" class="form-control">
+    </div>
+  </div>
 
-    const form = document.getElementById('tradeForm');
-    const tradesBody = document.getElementById('tradesBody');
-    const summaryBody = document.getElementById('summaryBody');
-    const exportExcelBtn = document.getElementById('exportExcel');
-    const importExcelBtn = document.getElementById('importExcel');
-    const resetBtn = document.getElementById('resetData');
-    const importFile = document.getElementById('importFile');
+  <!-- Formulaire d'ajout de trade -->
+  <form id="tradeForm" class="row g-3 mb-3">
+    <div class="col-md-2">
+      <label class="form-label">Date</label>
+      <input type="date" class="form-control" id="tradeDate" required>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Actif</label>
+      <input type="text" class="form-control" id="asset" required>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Type</label>
+      <select class="form-select" id="type" required>
+        <option value="Buy">Achat</option>
+        <option value="Sell">Vente</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Entrée</label>
+      <input type="number" step="any" class="form-control" id="entry" required>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Sortie</label>
+      <input type="number" step="any" class="form-control" id="exit">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Quantité</label>
+      <input type="number" step="any" class="form-control" id="quantity" required>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Stratégie</label>
+      <input type="text" class="form-control" id="strategy" required>
+    </div>
+    <div class="col-12">
+      <label class="form-label">Commentaire</label>
+      <textarea id="reason" class="form-control" rows="2"></textarea>
+    </div>
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary">Ajouter</button>
+    </div>
+  </form>
 
-    form.addEventListener('submit', e => {
-      e.preventDefault();
-      const trade = {
-        date: document.getElementById('tradeDate').value,
-        asset: document.getElementById('asset').value,
-        type: document.getElementById('type').value,
-        entry: parseFloat(document.getElementById('entry').value),
-        exit: document.getElementById('exit').value ? parseFloat(document.getElementById('exit').value) : null,
-        quantity: parseFloat(document.getElementById('quantity').value),
-        reason: document.getElementById('reason').value
-      };
-      trades.push(trade);
-      localStorage.setItem(tradesKey, JSON.stringify(trades));
-      form.reset();
-      render();
-    });
+  <div class="d-flex flex-wrap align-items-center mb-2">
+    <h2 class="me-auto">Trades</h2>
+    <input type="file" id="importFile" class="d-none" accept=".xlsx">
+    <button id="exportExcel" class="btn btn-secondary me-2">Export Excel</button>
+    <button id="importExcel" class="btn btn-secondary me-2">Import Excel</button>
+    <button id="resetData" class="btn btn-danger">Reset</button>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-striped" id="tradesTable">
+      <thead>
+        <tr>
+          <th data-key="date">Date</th>
+          <th data-key="asset">Actif</th>
+          <th data-key="type">Type</th>
+          <th data-key="entry">Entrée</th>
+          <th data-key="exit">Sortie</th>
+          <th data-key="quantity">Qté</th>
+          <th data-key="profit">Gain</th>
+          <th data-key="strategy">Stratégie</th>
+          <th>Commentaire</th>
+        </tr>
+      </thead>
+      <tbody id="tradesBody"></tbody>
+    </table>
+  </div>
 
-    exportExcelBtn.addEventListener('click', () => {
-      const data = trades.map(t => ({
-        Date: t.date,
-        Asset: t.asset,
-        Type: t.type,
-        Entry: t.entry,
-        Exit: t.exit ?? '',
-        Quantity: t.quantity,
-        Reason: t.reason
-      }));
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Trades');
-      XLSX.writeFile(wb, 'trades.xlsx');
-    });
+  <hr>
+  <h2>Résumé mensuel</h2>
+  <div class="table-responsive">
+    <table class="table table-bordered" id="summaryTable">
+      <thead>
+        <tr>
+          <th>Mois</th>
+          <th>Trades</th>
+          <th>Total P/L</th>
+          <th>Profit Factor</th>
+        </tr>
+      </thead>
+      <tbody id="summaryBody"></tbody>
+    </table>
+  </div>
 
-    importExcelBtn.addEventListener('click', () => importFile.click());
-    importFile.addEventListener('change', e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = evt => {
-        const wb = XLSX.read(new Uint8Array(evt.target.result), {type:'array'});
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(sheet);
-        trades = json.map(r => ({
-          date: r.Date,
-          asset: r.Asset,
-          type: r.Type,
-          entry: parseFloat(r.Entry),
-          exit: r.Exit === '' || r.Exit == null ? null : parseFloat(r.Exit),
-          quantity: parseFloat(r.Quantity),
-          reason: r.Reason || ''
-        }));
-        localStorage.setItem(tradesKey, JSON.stringify(trades));
-        render();
-      };
-      reader.readAsArrayBuffer(file);
-      importFile.value = '';
-    });
+  <div id="chartWrapper" class="my-3">
+    <div class="position-relative" style="height:300px">
+      <canvas id="capitalChart"></canvas>
+    </div>
+  </div>
+</div>
 
-    resetBtn.addEventListener('click', () => {
-      if (confirm('Reset all data?')) {
-        trades = [];
-        localStorage.removeItem(tradesKey);
-        render();
-      }
-    });
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+const tradesKey = 'tradesData';
+let trades = JSON.parse(localStorage.getItem(tradesKey) || '[]');
+let sortConfig = {key:'date',asc:true};
+const filters = {asset:'',start:'',end:''};
 
-    document.querySelectorAll('#tradesTable th').forEach(th => {
-      th.addEventListener('click', () => {
-        const key = th.getAttribute('data-key');
-        if (sortConfig.key === key) sortConfig.asc = !sortConfig.asc; else sortConfig = { key, asc: true };
-        renderTrades();
-      });
-    });
+const form = document.getElementById('tradeForm');
+const tradesBody = document.getElementById('tradesBody');
+const summaryBody = document.getElementById('summaryBody');
+const exportExcelBtn = document.getElementById('exportExcel');
+const importExcelBtn = document.getElementById('importExcel');
+const resetBtn = document.getElementById('resetData');
+const importFile = document.getElementById('importFile');
+const filterAsset = document.getElementById('filterAsset');
+const filterStart = document.getElementById('filterStart');
+const filterEnd = document.getElementById('filterEnd');
 
-    function computeProfit(t) {
-      if (t.exit == null) return 0;
-      const diff = t.type === 'Buy' ? t.exit - t.entry : t.entry - t.exit;
-      return diff * t.quantity;
-    }
+form.addEventListener('submit',e=>{
+  e.preventDefault();
+  const trade={
+    date:document.getElementById('tradeDate').value,
+    asset:document.getElementById('asset').value,
+    type:document.getElementById('type').value,
+    entry:parseFloat(document.getElementById('entry').value),
+    exit:document.getElementById('exit').value ? parseFloat(document.getElementById('exit').value) : null,
+    quantity:parseFloat(document.getElementById('quantity').value),
+    strategy:document.getElementById('strategy').value,
+    reason:document.getElementById('reason').value
+  };
+  trades.push(trade);
+  localStorage.setItem(tradesKey,JSON.stringify(trades));
+  form.reset();
+  updateFilterOptions();
+  render();
+});
 
-    function renderTrades() {
-      trades.sort((a,b) => {
-        let valA = a[sortConfig.key];
-        let valB = b[sortConfig.key];
-        if (sortConfig.key === 'profit') { valA = computeProfit(a); valB = computeProfit(b); }
-        if (valA < valB) return sortConfig.asc ? -1 : 1;
-        if (valA > valB) return sortConfig.asc ? 1 : -1;
-        return 0;
-      });
-      tradesBody.innerHTML = '';
-      trades.forEach(t => {
-        const row = document.createElement('tr');
-        const p = computeProfit(t);
-        row.className = p >= 0 ? 'trade-win' : 'trade-loss';
-        row.innerHTML = `
-          <td>${t.date}</td>
-          <td>${t.asset}</td>
-          <td>${t.type}</td>
-          <td>${t.entry}</td>
-          <td>${t.exit ?? ''}</td>
-          <td>${t.quantity}</td>
-          <td>${p.toFixed(2)} ${p >= 0 ? '✅' : '❌'}</td>
-          <td>${t.reason}</td>
-        `;
-        tradesBody.appendChild(row);
-      });
-    }
+exportExcelBtn.addEventListener('click',()=>{
+  const data=trades.map(t=>({Date:t.date,Asset:t.asset,Type:t.type,Entry:t.entry,Exit:t.exit??'',Quantity:t.quantity,Strategy:t.strategy,Reason:t.reason}));
+  const ws=XLSX.utils.json_to_sheet(data);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Trades');
+  XLSX.writeFile(wb,'trades.xlsx');
+});
 
-    function renderSummary() {
-      const monthly = {};
-      trades.forEach(t => {
-        if (t.exit == null) return;
-        const month = t.date.slice(0,7);
-        if (!monthly[month]) monthly[month] = {trades:0, profit:0, gains:0, losses:0};
-        const p = computeProfit(t);
-        monthly[month].trades++;
-        monthly[month].profit += p;
-        if (p >= 0) monthly[month].gains += p; else monthly[month].losses += Math.abs(p);
-      });
-      const months = Object.keys(monthly).sort();
-      summaryBody.innerHTML = '';
-      const capital = [];
-      let running = 10000;
-      months.forEach(m => {
-        const d = monthly[m];
-        running += d.profit;
-        capital.push({month:m, value:running});
-        const pf = d.losses ? (d.gains/d.losses).toFixed(2) : 'Inf';
-        const row = document.createElement('tr');
-        row.innerHTML = `
-          <td>${m}</td>
-          <td>${d.trades}</td>
-          <td>${d.profit.toFixed(2)}</td>
-          <td>${pf}</td>
-        `;
-        summaryBody.appendChild(row);
-      });
-      renderChart(capital);
-    }
-
-    let chart;
-    function renderChart(data) {
-      const ctx = document.getElementById('capitalChart').getContext('2d');
-      if (chart) chart.destroy();
-      chart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: data.map(d => d.month),
-          datasets: [{
-            label: 'Capital',
-            data: data.map(d => d.value),
-            fill: false,
-            borderColor: 'rgb(75,192,192)',
-            tension: 0.1
-          }]
-        },
-        options: { responsive: true, maintainAspectRatio:false }
-      });
-    }
-
-    function render(){
-      renderTrades();
-      renderSummary();
-    }
-
+importExcelBtn.addEventListener('click',()=>importFile.click());
+importFile.addEventListener('change',e=>{
+  const file=e.target.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=evt=>{
+    const wb=XLSX.read(new Uint8Array(evt.target.result),{type:'array'});
+    const sheet=wb.Sheets[wb.SheetNames[0]];
+    const json=XLSX.utils.sheet_to_json(sheet);
+    trades=json.map(r=>({
+      date:r.Date,
+      asset:r.Asset,
+      type:r.Type,
+      entry:parseFloat(r.Entry),
+      exit:r.Exit===''||r.Exit==null?null:parseFloat(r.Exit),
+      quantity:parseFloat(r.Quantity),
+      strategy:r.Strategy||'',
+      reason:r.Reason||''
+    }));
+    localStorage.setItem(tradesKey,JSON.stringify(trades));
+    updateFilterOptions();
     render();
-  </script>
+  };
+  reader.readAsArrayBuffer(file);
+  importFile.value='';
+});
+
+resetBtn.addEventListener('click',()=>{
+  if(confirm('Reset all data?')){
+    trades=[];
+    localStorage.removeItem(tradesKey);
+    updateFilterOptions();
+    render();
+  }
+});
+
+document.querySelectorAll('#tradesTable th').forEach(th=>{
+  th.addEventListener('click',()=>{
+    const key=th.getAttribute('data-key');
+    if(!key)return;
+    if(sortConfig.key===key) sortConfig.asc=!sortConfig.asc; else sortConfig={key,asc:true};
+    renderTrades();
+  });
+});
+
+filterAsset.addEventListener('change',()=>{filters.asset=filterAsset.value;render();});
+filterStart.addEventListener('change',()=>{filters.start=filterStart.value;render();});
+filterEnd.addEventListener('change',()=>{filters.end=filterEnd.value;render();});
+
+function computeProfit(t){
+  if(t.exit==null) return 0;
+  const diff=t.type==='Buy'?t.exit-t.entry:t.entry-t.exit;
+  return diff*t.quantity;
+}
+
+function getFilteredTrades(){
+  return trades.filter(t=>{
+    if(filters.asset && t.asset!==filters.asset) return false;
+    if(filters.start && t.date<filters.start) return false;
+    if(filters.end && t.date>filters.end) return false;
+    return true;
+  });
+}
+
+function renderTrades(){
+  const data=getFilteredTrades();
+  data.sort((a,b)=>{
+    let valA=a[sortConfig.key];
+    let valB=b[sortConfig.key];
+    if(sortConfig.key==='profit'){ valA=computeProfit(a); valB=computeProfit(b); }
+    if(valA<valB) return sortConfig.asc?-1:1;
+    if(valA>valB) return sortConfig.asc?1:-1;
+    return 0;
+  });
+  tradesBody.innerHTML='';
+  data.forEach(t=>{
+    const row=document.createElement('tr');
+    const p=computeProfit(t);
+    row.className=p>=0?'trade-win':'trade-loss';
+    row.innerHTML=`
+      <td>${t.date}</td>
+      <td>${t.asset}</td>
+      <td>${t.type}</td>
+      <td>${t.entry}</td>
+      <td>${t.exit??''}</td>
+      <td>${t.quantity}</td>
+      <td>${p.toFixed(2)} ${p>=0?'✅':'❌'}</td>
+      <td>${t.strategy}</td>
+      <td>${t.reason}</td>
+    `;
+    tradesBody.appendChild(row);
+  });
+}
+
+function renderSummary(){
+  const data=getFilteredTrades();
+  const monthly={};
+  data.forEach(t=>{
+    if(t.exit==null) return;
+    const month=t.date.slice(0,7);
+    if(!monthly[month]) monthly[month]={trades:0,profit:0,gains:0,losses:0};
+    const p=computeProfit(t);
+    monthly[month].trades++;
+    monthly[month].profit+=p;
+    if(p>=0) monthly[month].gains+=p; else monthly[month].losses+=Math.abs(p);
+  });
+  const months=Object.keys(monthly).sort();
+  summaryBody.innerHTML='';
+  const capital=[];
+  let running=10000;
+  months.forEach(m=>{
+    const d=monthly[m];
+    running+=d.profit;
+    capital.push({month:m,value:running});
+    const pf=d.losses?(d.gains/d.losses).toFixed(2):'Inf';
+    const row=document.createElement('tr');
+    row.innerHTML=`
+      <td>${m}</td>
+      <td>${d.trades}</td>
+      <td>${d.profit.toFixed(2)}</td>
+      <td>${pf}</td>
+    `;
+    summaryBody.appendChild(row);
+  });
+  renderChart(capital);
+}
+
+function analyzeTrades(){
+  const stratProfit={};
+  const stratStats={};
+  const assetStats={};
+  const typeCount={Buy:0,Sell:0};
+  trades.forEach(t=>{
+    const p=computeProfit(t);
+    stratProfit[t.strategy]=(stratProfit[t.strategy]||0)+p;
+    if(t.exit!=null){
+      stratStats[t.strategy]=stratStats[t.strategy]||{w:0,l:0};
+      if(p>=0) stratStats[t.strategy].w++; else stratStats[t.strategy].l++;
+      assetStats[t.asset]=assetStats[t.asset]||{w:0,t:0};
+      if(p>=0) assetStats[t.asset].w++; assetStats[t.asset].t++;
+    }
+    typeCount[t.type]=(typeCount[t.type]||0)+1;
+  });
+  const bestStrat=Object.entries(stratProfit).sort((a,b)=>b[1]-a[1])[0];
+  document.getElementById('bestStrategy').textContent=bestStrat?`Setup le plus rentable : ${bestStrat[0]} (${bestStrat[1].toFixed(2)})`:'Aucune donnée';
+  let bestAsset=null;
+  for(const [asset,res] of Object.entries(assetStats)){
+    const rate=res.t?res.w/res.t:0;
+    if(!bestAsset||rate>bestAsset.rate) bestAsset={asset,rate};
+  }
+  document.getElementById('bestAsset').textContent=bestAsset?`Actif le plus performant : ${bestAsset.asset} (${(bestAsset.rate*100).toFixed(0)}%)`:'';
+  const mostType=typeCount.Buy>=typeCount.Sell?'Achat':'Vente';
+  document.getElementById('mostType').textContent=`Type le plus fréquent : ${mostType}`;
+  const warn=[];
+  for(const [s,st] of Object.entries(stratStats)){
+    const tot=st.w+st.l;
+    const rate=tot?st.w/tot:0;
+    if(rate<0.4 && tot>=3) warn.push(s);
+  }
+  document.getElementById('warning').textContent=warn.length?`Attention: stratégies en difficulté - ${warn.join(', ')}`:'';
+}
+
+let chart;
+function renderChart(data){
+  const ctx=document.getElementById('capitalChart').getContext('2d');
+  if(chart) chart.destroy();
+  chart=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:data.map(d=>d.month),
+      datasets:[{
+        label:'Capital',
+        data:data.map(d=>d.value),
+        fill:false,
+        borderColor:'rgb(75,192,192)',
+        tension:0.3
+      }]
+    },
+    options:{responsive:true,maintainAspectRatio:false}
+  });
+}
+
+function updateFilterOptions(){
+  const assets=[...new Set(trades.map(t=>t.asset))];
+  filterAsset.innerHTML='<option value="">Tous</option>'+assets.map(a=>`<option value="${a}">${a}</option>`).join('');
+}
+
+function render(){
+  renderTrades();
+  renderSummary();
+  analyzeTrades();
+}
+
+updateFilterOptions();
+render();
+</script>
 </body>
 </html>
