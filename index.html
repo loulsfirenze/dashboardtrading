@@ -145,6 +145,7 @@ const tradesKey = 'tradesData';
 let trades = JSON.parse(localStorage.getItem(tradesKey) || '[]');
 let sortConfig = {key:'date',asc:true};
 const filters = {asset:'',start:'',end:''};
+const initialCapital = 10000;
 
 const form = document.getElementById('tradeForm');
 const tradesBody = document.getElementById('tradesBody');
@@ -293,7 +294,7 @@ function renderSummary(){
   const months=Object.keys(monthly).sort();
   summaryBody.innerHTML='';
   const capital=[];
-  let running=10000;
+  let running=initialCapital;
   months.forEach(m=>{
     const d=monthly[m];
     running+=d.profit;
