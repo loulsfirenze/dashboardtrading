@@ -243,6 +243,10 @@
       summaryBody.innerHTML = '';
       const capital = [];
       let running = 10000;
+      let totalTrades = 0;
+      let totalProfit = 0;
+      let totalGains = 0;
+      let totalLosses = 0;
       months.forEach(m => {
         const d = monthly[m];
         running += d.profit;
@@ -256,7 +260,20 @@
           <td>${pf}</td>
         `;
         summaryBody.appendChild(row);
+        totalTrades += d.trades;
+        totalProfit += d.profit;
+        totalGains += d.gains;
+        totalLosses += d.losses;
       });
+      const totalPF = totalLosses ? (totalGains/totalLosses).toFixed(2) : 'Inf';
+      const totalRow = document.createElement('tr');
+      totalRow.innerHTML = `
+        <td><strong>Total</strong></td>
+        <td><strong>${totalTrades}</strong></td>
+        <td><strong>${totalProfit.toFixed(2)}</strong></td>
+        <td><strong>${totalPF}</strong></td>
+      `;
+      summaryBody.appendChild(totalRow);
       renderChart(capital);
     }
 
